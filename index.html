@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D 牙齿矫正器 CNC 仿真系统</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- OrbitControls -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; background-color: #f8fafc; }
+        #canvas-container { height: 750px; width: 100%; background-color: #0f172a; border-radius: 0 0 0.75rem 0.75rem; overflow: hidden; position: relative; }
+        .card { background: white; border-radius: 0.75rem; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); }
+        .btn-primary { background-color: #3b82f6; color: white; transition: all 0.2s; }
+        .btn-primary:hover:not(:disabled) { background-color: #2563eb; }
+        .btn-primary:disabled { background-color: #94a3b8; cursor: not-allowed; }
+        
+        /* Range Input */
+        input[type=range] { -webkit-appearance: none; background: transparent; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%; background: #3b82f6; margin-top: -6px; box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
+        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; cursor: pointer; background: #e2e8f0; border-radius: 2px; }
+        
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+    </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden">
+
+    <!-- Header -->
+    <header class="bg-white border-b border-gray-200 px-8 py-4 flex items-center justify-between shrink-0 z-10 shadow-sm">
+        <div class="flex items-center gap-3">
+            <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold shadow-blue-200 shadow-lg">3D</div>
+            <h1 class="text-xl font-bold text-gray-800 tracking-tight">牙齿矫正器 CNC 仿真转换器</h1>
+        </div>
+        <div class="flex items-center gap-4">
+             <div class="text-xs px-3 py-1 bg-amber-50 text-amber-600 rounded-full font-medium border border-amber-100">Step-by-Step Control</div>
+             <div class="text-sm text-gray-400">v3.3 Step Mode</div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-1 overflow-hidden p-4 lg:p-6">
+        <div class="max-w-screen-2xl mx-auto h-full grid grid-cols-1 lg:grid-cols-12 gap-6">
+            
+            <!-- Left Sidebar -->
+            <div class="lg:col-span-3 flex flex-col gap-5 overflow-y-auto pr-1 pb-4">
+                
+                <!-- 1. Process -->
+                <div class="card p-5 border border-gray-100">
+                    <h2 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+                        <span class="w-1.5 h-1.5 rounded-full bg-gray-400"></span> 1. 数据导入
+                    </h2>
+                    
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">CAD 文件 (.json)</label>
+                            <div class="relative group">
+                                <input type="file" id="fileInput" accept=".json,.txt" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"/>
+                                <div class="bg-gray-50 border border-dashed border-gray-300 rounded-lg px-4 py-3 text-center group-hover:bg-blue-50 group-hover:border-blue-300 transition-colors">
+                                    <span class="text-sm text-gray-500 group-hover:text-blue-600">点击上传或拖拽文件</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <div class="flex justify-between mb-1">
+                                <label class="text-xs font-medium text-gray-500">平滑度 (Segment)</label>
+                                <span id="segmentValue" class="text-xs font-mono text-blue-600 font-bold bg-blue-50 px-1.5 rounded">8</span>
+                            </div>
+                            <input type="range" id="segmentInput" min="2" max="30" value="8" class="w-full">
+                        </div>
+
+                        <button id="processBtn" disabled class="w-full py-2.5 px-4 rounded-lg font-semibold shadow-sm text-sm btn-primary flex justify-center items-center gap-2">
+                            <span>生成路径</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 2. Simulation (Enhanced) -->
+                <div class="card p-5 border-t-4 border-amber-500 flex flex-col gap-4">
+                    <div class="flex justify-between items-center">
+                        <h2 class="text-xs font-bold text-amber-600 uppercase tracking-wider flex items-center gap-2">
+                            <span class="animate-pulse w-1.5 h-1.5 rounded-full bg-amber-500"></span> 2. 仿真控制
+                        </h2>
+                        <span id="animStateTag" class="text-xs font-mono px-2 py-0.5 rounded bg-gray-100 text-gray-400">待机</span>
+                    </div>
+
+                    <!-- Status Display -->
+                    <div class="bg-gray-900 rounded-lg p-4 min-h-[100px] flex flex-col justify-center relative overflow-hidden group">
+                        <div id="statusBg" class="absolute inset-0 bg-amber-500/10 opacity-0 transition-opacity duration-300"></div>
+                        <div id="simStatusText" class="relative z-10 text-center">
+                            <div class="text-gray-500 text-sm">等待开始...</div>
+                        </div>
+                        <div class="absolute bottom-0 left-0 w-full h-1 bg-gray-800">
+                            <div id="simProgressBar" class="h-full bg-amber-500 width-0 transition-all duration-100" style="width: 0%"></div>
+                        </div>
+                    </div>
+
+                    <!-- Step Controls -->
+                    <div class="grid grid-cols-2 gap-3">
+                        <button id="stepBtn" disabled class="py-3 px-2 bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 rounded-lg shadow-sm transition-all flex flex-col items-center justify-center group relative overflow-hidden">
+                            <span class="text-xs font-bold uppercase tracking-wider mb-0.5 z-10">按钮 B</span>
+                            <span class="font-bold z-10">单步执行</span>
+                            <div class="absolute inset-0 bg-white/50 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                        </button>
+                        
+                        <button id="segmentBtn" disabled class="py-3 px-2 bg-indigo-600 text-white hover:bg-indigo-700 rounded-lg shadow-md transition-all flex flex-col items-center justify-center group">
+                            <span class="text-xs font-bold uppercase tracking-wider text-indigo-200 mb-0.5">按钮 A</span>
+                            <span class="font-bold">执行一段</span>
+                        </button>
+                    </div>
+
+                    <!-- Reset & Auto -->
+                    <div class="grid grid-cols-3 gap-2 mt-1">
+                        <button id="autoToggleBtn" disabled class="col-span-2 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium flex items-center justify-center gap-2 transition-colors">
+                            <span id="autoIcon">▶</span> 自动连续播放
+                        </button>
+                        <button id="resetBtn" disabled class="col-span-1 py-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-lg text-sm font-medium transition-colors">
+                            重置
+                        </button>
+                    </div>
+
+                    <div class="space-y-1 mt-1">
+                        <div class="flex justify-between text-xs text-gray-500">
+                            <span>动画速度</span>
+                            <span id="speedVal">1.0x</span>
+                        </div>
+                        <input type="range" id="speedInput" min="0.1" max="5.0" step="0.1" value="1.0" class="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-amber-500">
+                    </div>
+                </div>
+
+                <!-- 3. Export -->
+                <div class="mt-auto">
+                    <button id="downloadBtn" class="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg shadow-md transition-colors duration-200 hidden flex items-center justify-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                        导出加工指令
+                    </button>
+                </div>
+            </div>
+
+            <!-- Right Main: 3D Visualization -->
+            <div class="lg:col-span-9 h-full flex flex-col">
+                <div class="card h-full flex flex-col p-0 overflow-hidden shadow-lg border border-gray-200 bg-slate-900">
+                    <!-- Viz Header -->
+                    <div class="px-6 py-3 bg-white/95 backdrop-blur border-b border-gray-200 flex justify-between items-center z-10">
+                        <div class="flex items-center gap-4">
+                            <h3 class="font-bold text-gray-700 text-sm">机器视角预览</h3>
+                            <div class="h-4 w-px bg-gray-300"></div>
+                            <div class="text-xs font-medium flex gap-4">
+                                <div class="flex items-center gap-1.5">
+                                    <span class="w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-b-[10px] border-b-yellow-500"></span>
+                                    <span class="text-gray-700">喷嘴 (固定)</span>
+                                </div>
+                                <div class="flex items-center gap-1.5">
+                                    <span class="w-3 h-1 bg-blue-500 rounded"></span>
+                                    <span class="text-gray-700">钢丝</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="stepCounter" class="text-xs font-mono text-gray-400 bg-gray-100 px-2 py-1 rounded">
+                            Task: 0 / 0
+                        </div>
+                    </div>
+                    
+                    <!-- Canvas Area -->
+                    <div id="canvas-container" class="flex-1 w-full relative group cursor-crosshair">
+                        <div class="absolute bottom-6 left-1/2 transform -translate-x-1/2 bg-black/30 backdrop-blur-sm text-white/70 text-xs px-3 py-1.5 rounded-full pointer-events-none select-none border border-white/10 opacity-0 group-hover:opacity-100 transition-opacity">
+                            左键旋转 · 右键平移 · 滚轮缩放
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+<script>
+    // --- Global Variables ---
+    let originalData = null;
+    let processedModels = [];
+    
+    // Animation Queue & State
+    let animQueue = []; // Master list of all pending tasks
+    let currentAnimTask = null; // Currently executing task
+    let playbackSpeed = 1.0;
+    
+    // Control Modes
+    let isAutoPlaying = false;
+    let runUntilSegmentChange = false;
+    let currentSegmentTarget = -1;
+    
+    // Visualization Objects
+    let simHead = null; // Stationary Nozzle
+    let wireGroup = null; // Container for the entire wire
+    let activeWireMesh = null; // The segment currently growing
+    
+    let wireMaterial = new THREE.MeshPhongMaterial({ color: 0x3b82f6, shininess: 80, specular: 0x4444ff });
+    let activeWireMaterial = new THREE.MeshPhongMaterial({ color: 0x60a5fa, shininess: 100, emissive: 0x1d4ed8, emissiveIntensity: 0.2 });
+
+    // --- Three.js Setup ---
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0f172a); // Slate-900
+    scene.fog = new THREE.Fog(0x0f172a, 40, 200);
+    
+    // Lighting
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+    scene.add(ambientLight);
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    dirLight.position.set(20, 20, 20);
+    dirLight.castShadow = true;
+    scene.add(dirLight);
+    
+    const headSpot = new THREE.SpotLight(0xf59e0b, 2, 50, 0.5, 0.5, 1);
+    headSpot.position.set(0, 10, 0);
+    headSpot.target.position.set(0, 0, 0);
+    scene.add(headSpot);
+    scene.add(headSpot.target);
+
+    const gridHelper = new THREE.GridHelper(200, 40, 0x334155, 0x1e293b);
+    gridHelper.position.y = -5;
+    scene.add(gridHelper);
+
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.set(30, 20, 30);
+    camera.lookAt(0,0,0);
+    
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.shadowMap.enabled = true;
+    renderer.outputEncoding = THREE.sRGBEncoding;
+    document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+
+    // Resize
+    function onWindowResize() {
+        const container = document.getElementById('canvas-container');
+        if(container) {
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        }
+    }
+    window.addEventListener('resize', onWindowResize);
+    setTimeout(onWindowResize, 100);
+
+    // Animation Loop
+    const clock = new THREE.Clock();
+
+    function animate() {
+        requestAnimationFrame(animate);
+        const delta = clock.getDelta();
+        
+        // Logic: If we have a task running, process it.
+        // If not, and we are in a mode that requests more tasks (Auto or Segment), fetch next.
+        if (currentAnimTask) {
+            processAnimation(delta * playbackSpeed);
+        } else {
+            checkQueue();
+        }
+
+        controls.update();
+        renderer.render(scene, camera);
+    }
+    animate();
+
+    // --- Logic ---
+    
+    document.getElementById('fileInput').addEventListener('change', handleFileUpload);
+    document.getElementById('segmentInput').addEventListener('input', (e) => {
+        document.getElementById('segmentValue').innerText = e.target.value;
+        if(originalData) processFile();
+    });
+    document.getElementById('processBtn').addEventListener('click', processFile);
+    document.getElementById('downloadBtn').addEventListener('click', downloadFile);
+
+    // Control Buttons
+    document.getElementById('stepBtn').addEventListener('click', executeStep);
+    document.getElementById('segmentBtn').addEventListener('click', executeSegment);
+    document.getElementById('autoToggleBtn').addEventListener('click', toggleAuto);
+    document.getElementById('resetBtn').addEventListener('click', resetSimulation);
+    
+    document.getElementById('speedInput').addEventListener('input', (e) => {
+        playbackSpeed = parseFloat(e.target.value);
+        document.getElementById('speedVal').innerText = playbackSpeed.toFixed(1) + 'x';
+    });
+
+    function handleFileUpload(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                const json = JSON.parse(e.target.result);
+                if (!json.models) throw new Error("Invalid Format");
+                originalData = json;
+                document.getElementById('processBtn').disabled = false;
+                processFile(); 
+            } catch (err) {
+                alert("文件解析错误: " + err.message);
+            }
+        };
+        reader.readAsText(file);
+    }
+
+    // --- LRA Calculation ---
+    const V3 = (arr) => new THREE.Vector3(arr[0], arr[1], arr[2]);
+
+    function processFile() {
+        if (!originalData) return;
+        const segmentCount = parseInt(document.getElementById('segmentInput').value);
+        let points = [];
+        
+        originalData.models.forEach((m, idx) => {
+            const start = V3(m.startpoint);
+            const end = V3(m.endpoint);
+            if(idx===0) points.push(start);
+            if(m.type === 0) {
+                points.push(end);
+            } else {
+                const center = V3(m.center);
+                const R = m.R;
+                const U = new THREE.Vector3().subVectors(start, center).normalize();
+                const V_end = new THREE.Vector3().subVectors(end, center).normalize();
+                let N = new THREE.Vector3().crossVectors(U, V_end).normalize();
+                if(N.lengthSq() < 0.01 && m.midpoint) { 
+                    const mid = V3(m.midpoint);
+                    N.crossVectors(U, new THREE.Vector3().subVectors(mid, center)).normalize();
+                }
+                const V_ortho = new THREE.Vector3().crossVectors(N, U).normalize();
+                const sweep = m.angle * (Math.PI/180);
+                for(let i=1; i<=segmentCount; i++){
+                    const t = (i/segmentCount)*sweep;
+                    points.push(new THREE.Vector3().copy(center).addScaledVector(U, R*Math.cos(t)).addScaledVector(V_ortho, R*Math.sin(t)));
+                }
+            }
+        });
+
+        processedModels = calculateLRA(points);
+        prepareSimulation();
+        
+        document.getElementById('stepBtn').disabled = false;
+        document.getElementById('segmentBtn').disabled = false;
+        document.getElementById('autoToggleBtn').disabled = false;
+        document.getElementById('resetBtn').disabled = false;
+        document.getElementById('downloadBtn').classList.remove('hidden');
+    }
+
+    function calculateLRA(points) {
+        let res = [];
+        let lastNormal = new THREE.Vector3(0,0,1);
+        let hasNormal = false;
+        
+        for(let i=0; i<points.length-1; i++) {
+            const s = points[i];
+            const e = points[i+1];
+            const v = new THREE.Vector3().subVectors(e,s);
+            const len = v.length();
+            let bend=0, rot=0;
+            if(i < points.length-2) {
+                const n = points[i+2];
+                const vNext = new THREE.Vector3().subVectors(n,e);
+                const v1 = v.clone().normalize();
+                const v2 = vNext.clone().normalize();
+                bend = THREE.MathUtils.radToDeg(Math.acos(Math.max(-1, Math.min(1, v1.dot(v2)))));
+                const cNormal = new THREE.Vector3().crossVectors(v1, v2).normalize();
+                if(bend > 0.1 && cNormal.lengthSq() > 0.5) {
+                    if(!hasNormal) { lastNormal = cNormal; hasNormal=true; }
+                    else {
+                        const cross = new THREE.Vector3().crossVectors(lastNormal, cNormal);
+                        const sign = cross.dot(v1) >= 0 ? 1 : -1;
+                        rot = THREE.MathUtils.radToDeg(Math.atan2(cross.length()*sign, lastNormal.dot(cNormal)));
+                        lastNormal = cNormal;
+                    }
+                }
+            }
+            res.push({ ID: i+1, length: parseFloat(len.toFixed(4)), bendAngle: parseFloat(bend.toFixed(2)), RotateAngle: parseFloat(rot.toFixed(2)) });
+        }
+        return res;
+    }
+
+    // --- Simulation Engine ---
+
+    function prepareSimulation() {
+        stopAllModes();
+        animQueue = [];
+        currentAnimTask = null;
+
+        // Cleanup
+        const toRemove = [];
+        scene.traverse(c => { if(c.userData.isPart) toRemove.push(c); });
+        toRemove.forEach(c => { if(c.parent) c.parent.remove(c); });
+
+        simHead = null; wireGroup = null; activeWireMesh = null;
+
+        // 1. Build Static Nozzle
+        simHead = new THREE.Group();
+        const nozzleGeom = new THREE.CylinderGeometry(0.8, 0.5, 3, 16);
+        nozzleGeom.rotateX(Math.PI/2);
+        nozzleGeom.translate(0,0,-1.5);
+        const nozzle = new THREE.Mesh(nozzleGeom, new THREE.MeshPhongMaterial({ color: 0xf59e0b }));
+        simHead.add(nozzle);
+        const fin = new THREE.Mesh(new THREE.BoxGeometry(0.2, 2.5, 0.5), new THREE.MeshPhongMaterial({ color: 0xd97706 }));
+        fin.position.set(0, 0, -2);
+        simHead.add(fin);
+        simHead.userData.isPart = true;
+        scene.add(simHead);
+
+        // 2. Wire Group
+        wireGroup = new THREE.Group();
+        wireGroup.userData.isPart = true;
+        scene.add(wireGroup);
+
+        // 3. Build FULL Queue
+        processedModels.forEach((model, idx) => {
+            if(Math.abs(model.RotateAngle) > 0.1) {
+                animQueue.push({ type: 'ROTATE', angle: model.RotateAngle, duration: 0.5, desc: `扭转 ${model.RotateAngle}°`, modelIdx: idx });
+            }
+            animQueue.push({ type: 'FEED', len: model.length, duration: Math.max(0.3, model.length * 0.05), desc: `送线 ${model.length}mm`, modelIdx: idx });
+            if(Math.abs(model.bendAngle) > 0.1) {
+                animQueue.push({ type: 'BEND', angle: model.bendAngle, duration: 0.4, desc: `弯折 ${model.bendAngle}°`, modelIdx: idx });
+            }
+        });
+        animQueue.push({ type: 'FINISH', duration: 0, desc: '完成', modelIdx: processedModels.length });
+
+        updateUIStatus(0, 'ready');
+    }
+
+    // --- Control Logic ---
+
+    function stopAllModes() {
+        isAutoPlaying = false;
+        runUntilSegmentChange = false;
+        currentSegmentTarget = -1;
+        updateStateTag();
+    }
+
+    function toggleAuto() {
+        if(isAutoPlaying) {
+            stopAllModes();
+            document.getElementById('autoToggleBtn').classList.remove('bg-green-100', 'text-green-700');
+            document.getElementById('autoToggleBtn').innerHTML = `<span id="autoIcon">▶</span> 自动连续播放`;
+        } else {
+            isAutoPlaying = true;
+            runUntilSegmentChange = false;
+            document.getElementById('autoToggleBtn').classList.add('bg-green-100', 'text-green-700');
+            document.getElementById('autoToggleBtn').innerHTML = `<span class="animate-spin mr-1">⟳</span> 自动运行中...`;
+        }
+        updateStateTag();
+    }
+
+    function executeStep() {
+        // Button B: Execute ONE micro task
+        // If auto is running, stop it first to take manual control? Or ignore.
+        // Let's stop auto to be safe.
+        stopAllModes();
+        
+        // If a task is currently running, we just let it finish. 
+        // If no task is running, we checkQueue will pick one up because we manually check queue now?
+        // No, checkQueue only picks if isAuto or runUntilSegment.
+        // So we manually pick one.
+        if (!currentAnimTask && animQueue.length > 0) {
+            currentAnimTask = animQueue.shift();
+            currentAnimTask.elapsed = 0;
+            initTask(currentAnimTask);
+        }
+        updateStateTag("单步执行");
+    }
+
+    function executeSegment() {
+        // Button A: Run until modelIdx changes
+        stopAllModes(); // clear auto flag
+        
+        if (animQueue.length === 0 && !currentAnimTask) return;
+
+        // Determine target ID
+        let startIdx = -1;
+        if (currentAnimTask) {
+            startIdx = currentAnimTask.modelIdx;
+        } else if (animQueue.length > 0) {
+            startIdx = animQueue[0].modelIdx;
+        }
+
+        if (startIdx !== -1) {
+            currentSegmentTarget = startIdx;
+            runUntilSegmentChange = true;
+            updateStateTag("段落执行");
+        }
+    }
+
+    function checkQueue() {
+        // Called every frame when no task is running
+        if (animQueue.length === 0) {
+            if (isAutoPlaying || runUntilSegmentChange) {
+                stopAllModes();
+                updateUIStatus(100, 'finish');
+            }
+            return;
+        }
+
+        // Check if we should fetch next
+        let shouldFetch = false;
+
+        if (isAutoPlaying) {
+            shouldFetch = true;
+        } else if (runUntilSegmentChange) {
+            // Check if next task belongs to the same segment
+            const nextTaskIdx = animQueue[0].modelIdx;
+            if (nextTaskIdx === currentSegmentTarget) {
+                shouldFetch = true;
+            } else {
+                // Segment finished
+                runUntilSegmentChange = false;
+                updateStateTag();
+            }
+        }
+
+        if (shouldFetch) {
+            currentAnimTask = animQueue.shift();
+            currentAnimTask.elapsed = 0;
+            initTask(currentAnimTask);
+        }
+    }
+
+    function initTask(task) {
+        if(task.type === 'FEED') {
+            const geo = new THREE.CylinderGeometry(0.15, 0.15, 1, 8);
+            geo.rotateX(Math.PI/2); 
+            geo.translate(0,0,0.5); 
+            activeWireMesh = new THREE.Mesh(geo, activeWireMaterial);
+            activeWireMesh.scale.z = 0.001;
+            activeWireMesh.userData.isPart = true;
+            scene.add(activeWireMesh);
+        }
+        if(task.modelIdx !== undefined) {
+            updateUIStatus((task.modelIdx / processedModels.length)*100, task.type, task.desc);
+        }
+    }
+
+    function rotateGroupAroundWorldAxis(group, axis, angleDeg) {
+        const rad = THREE.MathUtils.degToRad(angleDeg);
+        const rotMat = new THREE.Matrix4().makeRotationAxis(axis.normalize(), rad);
+        group.applyMatrix4(rotMat);
+    }
+
+    function processAnimation(dt) {
+        const task = currentAnimTask;
+        task.elapsed += dt;
+        let progress = Math.min(1, task.elapsed / task.duration);
+        const ease = t => t<.5 ? 2*t*t : -1+(4-2*t)*t;
+        const eProg = ease(progress);
+        const dProg = eProg - (task.lastProg || 0);
+        task.lastProg = eProg;
+
+        if(task.type === 'ROTATE') {
+            rotateGroupAroundWorldAxis(wireGroup, new THREE.Vector3(0,0,1), -task.angle * dProg);
+        } else if (task.type === 'FEED') {
+            const dLen = task.len * dProg;
+            wireGroup.position.z += dLen;
+            const curLen = task.len * eProg;
+            activeWireMesh.scale.z = curLen;
+        } else if (task.type === 'BEND') {
+            rotateGroupAroundWorldAxis(wireGroup, new THREE.Vector3(0,1,0), task.angle * dProg);
+        }
+
+        if(progress >= 1) {
+            if(task.type === 'FEED') {
+                activeWireMesh.scale.z = task.len;
+                wireGroup.attach(activeWireMesh);
+                activeWireMesh.material = wireMaterial;
+                const joint = new THREE.Mesh(new THREE.SphereGeometry(0.2), wireMaterial);
+                joint.position.set(0,0,1);
+                activeWireMesh.add(joint);
+                joint.scale.set(1,1,1/task.len);
+                activeWireMesh = null;
+            }
+            currentAnimTask = null;
+        }
+    }
+
+    function resetSimulation() {
+        prepareSimulation();
+    }
+
+    function updateStateTag(text) {
+        const tag = document.getElementById('animStateTag');
+        if (text) {
+            tag.innerText = text;
+            tag.className = "text-xs font-mono px-2 py-0.5 rounded bg-blue-100 text-blue-600 font-bold";
+        } else if (isAutoPlaying) {
+            tag.innerText = "自动运行";
+            tag.className = "text-xs font-mono px-2 py-0.5 rounded bg-green-100 text-green-600 font-bold";
+        } else {
+            tag.innerText = "待机";
+            tag.className = "text-xs font-mono px-2 py-0.5 rounded bg-gray-100 text-gray-400";
+        }
+    }
+
+    function updateUIStatus(percent, type, text) {
+        document.getElementById('simProgressBar').style.width = percent + '%';
+        const statusText = document.getElementById('simStatusText');
+        const statusBg = document.getElementById('statusBg');
+        const counter = document.getElementById('stepCounter');
+        
+        if(type === 'finish') {
+            statusText.innerHTML = `<div class="text-green-500 font-bold text-lg">仿真完成</div>`;
+            statusBg.className = "absolute inset-0 bg-green-500/10 transition-opacity duration-300";
+        } else if (type === 'ready') {
+            statusText.innerHTML = `<div class="text-gray-500">准备就绪</div>`;
+            statusBg.className = "absolute inset-0 bg-gray-500/10 opacity-0";
+            counter.innerText = `Task: 0 / ${processedModels.length}`;
+        } else {
+            let color = "text-white";
+            let bgClass = "bg-amber-500/20";
+            let icon = "";
+            if(type === 'ROTATE') { color = "text-purple-400"; bgClass = "bg-purple-500/20"; icon = "↺"; }
+            else if (type === 'FEED') { color = "text-blue-400"; bgClass = "bg-blue-500/20"; icon = "⤏"; }
+            else if (type === 'BEND') { color = "text-rose-400"; bgClass = "bg-rose-500/20"; icon = "⤵"; }
+
+            statusText.innerHTML = `
+                <div class="text-xs uppercase tracking-wide text-gray-400 mb-1">正在执行</div>
+                <div class="text-xl font-bold font-mono ${color} flex items-center justify-center gap-2">
+                    <span>${icon}</span> ${text}
+                </div>
+            `;
+            statusBg.className = `absolute inset-0 ${bgClass} opacity-100 transition-all duration-300`;
+            const currentIdx = currentAnimTask ? currentAnimTask.modelIdx + 1 : 0;
+            counter.innerText = `ID: ${currentIdx} / ${processedModels.length}`;
+        }
+    }
+
+    function downloadFile() {
+        if (processedModels.length === 0) return;
+        const outputObj = {
+            filename: "converted_path.log",
+            templateType: -1,
+            models: processedModels
+        };
+        const blob = new Blob([JSON.stringify(outputObj, null, 0)], { type: 'text/plain' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = "converted_path.txt";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+    }
+</script>
+</body>
+</html>
